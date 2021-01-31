@@ -1,0 +1,10 @@
+.catkin_tools
+build
+devel
+install
+logs
+output
+.vscode/*
+*.cmake
+*.pcd
+src/lidar_localization/slam_data/trajectory/*

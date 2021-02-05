@@ -1,0 +1,27 @@
+{
+    "files.associations": {
+        "core": "cpp",
+        "numericaldiff": "cpp",
+        "random": "cpp",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "*.ipp": "cpp",
+        "*.tcc": "cpp",
+        "bitset": "cpp",
+        "vector": "cpp",
+        "functional": "cpp",
+        "iomanip": "cpp",
+        "istream": "cpp",
+        "limits": "cpp",
+        "ostream": "cpp",
+        "ratio": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "*.txx": "cpp",
+        "*.inc": "cpp",
+        "exception": "cpp",
+        "thread": "cpp",
+        "nonlinearoptimization": "cpp"
+    }
+}

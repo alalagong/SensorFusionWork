@@ -11,6 +11,7 @@
 // TODO: Sophus is ready to use if you have a good undestanding of Lie algebra.
 // 
 #include <sophus/so3.hpp>
+#include <sophus/se3.hpp>
 
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
@@ -180,4 +181,125 @@ struct LidarDistanceFactor
 
 	Eigen::Vector3d curr_point;
 	Eigen::Vector3d closed_point;
+};
+
+class SE3Parameterization : public ceres::LocalParameterization {
+public:
+    virtual ~SE3Parameterization() {}
+
+    virtual bool Plus(double const *T_raw, double const *delta_raw,
+                      double *T_plus_delta_raw) const {
+        Eigen::Map<Sophus::SE3d const> const T(T_raw);
+        Eigen::Map<Sophus::Vector6d const> const delta(delta_raw);
+        Eigen::Map<Sophus::SE3d> T_plus_delta(T_plus_delta_raw);
+        T_plus_delta = Sophus::SE3d::exp(delta) * T;
+        return true;
+    }
+
+    // Set to Identity, for we have computed in ReprojectionErrorSE3::Evaluate
+    virtual bool ComputeJacobian(double const *T_raw,
+                                 double *jacobian_raw) const {
+        Eigen::Map<Eigen::Matrix<double, 6, 7> > jacobian(jacobian_raw);
+        jacobian.block<6,6>(0, 0).setIdentity();
+        jacobian.rightCols<1>().setZero();
+        return true;
+    }
+
+    virtual int GlobalSize() const { return Sophus::SE3d::num_parameters; }
+
+    virtual int LocalSize() const { return Sophus::SE3d::DoF; }
+};
+
+class LidarEdgeAnalyticFactor : public ceres::SizedCostFunction<1, 7>
+{
+public:
+	LidarEdgeAnalyticFactor(Eigen::Vector3d curr_point, Eigen::Vector3d last_point_a, Eigen::Vector3d last_point_b, double s) :
+		curr_point_(curr_point), last_point_a_(last_point_a), last_point_b_(last_point_b), s_(s)
+	{}
+	~LidarEdgeAnalyticFactor() {}
+
+	virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
+	{
+    	Eigen::Map<const Eigen::Quaterniond> q_last_curr(parameters[0]);
+    	Eigen::Map<const Eigen::Vector3d> t_last_curr(parameters[0]+4);
+
+		// Eigen::Quaterniond q_last_curr{parameters[0][3], parameters[0][0], parameters[0][1], parameters[0][2]};
+		// Eigen::Quaterniond q_identity{T(1), T(0), T(0), T(0)};
+		// q_last_curr = q_identity.slerp(s_, q_last_curr);
+		// Eigen::Vector3d t_last_curr{s_*parameters[1][0], s_*parameters[1][1], s_*parameters[1][2]};
+
+		Eigen::Vector3d last_point = q_last_curr * curr_point_ + t_last_curr;
+		Eigen::Vector3d vib_cross_via = (last_point - last_point_a_).cross(last_point - last_point_b_);
+		Eigen::Vector3d vab = last_point_a_ - last_point_b_;
+
+		residuals[0] = vib_cross_via.norm() / vab.norm();
+
+		if(jacobians != NULL)
+		{
+			// dline / dp_last
+			Eigen::Matrix<double, 1, 3> dr_dlast_point = (vib_cross_via.normalized()).transpose() * Sophus::SO3d::hat(vab) / vab.norm();
+
+			// dline / dT
+			if(jacobians[0] != NULL)
+			{
+				Eigen::Map<Eigen::Matrix<doube, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
+				J_se3.setZero();
+				J_se3.block<1, 3>(0, 0) = dr_dlast_point;
+				J_se3.block<1, 3>(0, 3) = dr_dlast_point * Sophus::SO3d::hat(-last_point);
+			}
+		}
+		return true;
+	}
+
+	static inline ceres::CostFunction* create(Eigen::Vector3d curr_point, Eigen::Vector3d last_point_a, Eigen::Vector3d last_point_b, double s)
+	{
+		return (new LidarEdgeAnalyticFactor(curr_point, last_point_a, last_point_b, s));
+	}
+private:
+	Eigen::Vector3d curr_point_, last_point_a_, last_point_b_;
+	double s_;
+};
+
+
+class LidarPlaneAnalyticFactor : public ceres::SizedCostFunction<1, 7>
+{
+public:
+	LidarPlaneAnalyticFactor(Eigen::Vector3d curr_point, Eigen::Vector3d last_point_j,
+					 Eigen::Vector3d last_point_l, Eigen::Vector3d last_point_m, double s) :
+			curr_point_(curr_point), last_point_j_(last_point_a), 
+			last_point_m_(last_point_m), last_point_l_(last_point_b), s_(s)
+	{}
+	~LidarPlaneAnalyticFactor() {}
+
+	virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
+	{
+		Eigen::Map<const Eigen::Quaterniond> q_last_curr(parameters[0]);
+    	Eigen::Map<const Eigen::Vector3d> t_last_curr(parameters[0]+4);
+		
+		Eigen::Vector3d last_point = q_last_curr * curr_point_ + t_last_curr;
+		Eigen::Vector3d plane_unit_norm = (last_point_j_ - last_point_l_).cross(last_point_j_ - last_point_m_);
+		plane_unit_norm.normalize();
+
+		residuals[0] = (last_point - last_point_j_) * plane_unit_norml;
+		if(jacobians != NULL && jacobians[0] != NULL)
+		{
+			// dplane / dT		
+			Eigen::Map<Eigen::Matrix<doube, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
+			J_se3.setZero();
+			J_se3.block<1, 3>(0, 0) = plane_unit_norm.;
+			J_se3.block<1, 3>(0, 3) = plane_unit_norm * Sophus::SO3d::hat(-last_point);			
+		}
+
+	}
+
+	static inline ceres::CostFunction* create(Eigen::Vector3d curr_point, Eigen::Vector3d last_point_j,
+					 							Eigen::Vector3d last_point_l, Eigen::Vector3d last_point_m, double s)
+	{
+		return (new LidarPlaneAnalyticFactor(curr_point, last_point_j, last_point_l, last_point_m, s));
+	}
+
+private:
+	Eigen::Vector3d curr_point_, last_point_j_, last_point_l_, last_point_m_;
+	Eigen::Vector3d ljm_norm;
+	double s;
 };

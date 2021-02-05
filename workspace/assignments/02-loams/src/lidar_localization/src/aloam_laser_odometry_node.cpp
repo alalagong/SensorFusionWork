@@ -49,6 +49,7 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
 #include <eigen3/Eigen/Dense>
+#include <sophus/se3.hpp>
 #include <mutex>
 #include <queue>
 
@@ -98,8 +99,12 @@ Eigen::Vector3d t_w_curr(0, 0, 0);
 double para_q[4] = {0, 0, 0, 1};
 double para_t[3] = {0, 0, 0};
 
-Eigen::Map<Eigen::Quaterniond> q_last_curr(para_q);
-Eigen::Map<Eigen::Vector3d> t_last_curr(para_t);
+Sophus::SE3d optimal_T;
+Eigen::Map<Eigen::Quaterniond> q_last_curr(optimal_T.so3().data());
+Eigen::Vector3d& t_last_curr = optimal_T.translation();
+// Eigen::Map<Eigen::Quaterniond> q_last_curr(para_q);
+// Eigen::Map<Eigen::Vector3d> t_last_curr(para_t);
+
 
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerSharpBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> cornerLessSharpBuf;
@@ -283,13 +288,15 @@ int main(int argc, char **argv)
 
                     //ceres::LossFunction *loss_function = NULL;
                     ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
-                    ceres::LocalParameterization *q_parameterization =
-                        new ceres::EigenQuaternionParameterization();
+                    // ceres::LocalParameterization *q_parameterization =
+                    //     new ceres::EigenQuaternionParameterization();
+                    ceres::LocalParameterization *local_parameterization =
+                        new ceres::SE3Parameterization();
                     ceres::Problem::Options problem_options;
-
                     ceres::Problem problem(problem_options);
-                    problem.AddParameterBlock(para_q, 4, q_parameterization);
-                    problem.AddParameterBlock(para_t, 3);
+                    // problem.AddParameterBlock(para_q, 4, q_parameterization);
+                    // problem.AddParameterBlock(para_t, 3);
+                    problem.AddParameterBlock(optimal_T, SE3d::num_parameters, local_parameterization);
 
                     pcl::PointXYZI pointSel;
                     std::vector<int> pointSearchInd;
@@ -378,8 +385,9 @@ int main(int argc, char **argv)
                                 s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / SCAN_PERIOD;
                             else
                                 s = 1.0;
-                            ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
-                            problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                            // ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
+                            ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::Create(curr_point, last_point_a, last_point_b, s);
+                            problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                             corner_correspondence++;
                         }
                     }
@@ -476,8 +484,9 @@ int main(int argc, char **argv)
                                     s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / SCAN_PERIOD;
                                 else
                                     s = 1.0;
-                                ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
-                                problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                                // ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                ceres::CostFunction *cost_function = LidarPlaneAnalyticFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                                 plane_correspondence++;
                             }
                         }

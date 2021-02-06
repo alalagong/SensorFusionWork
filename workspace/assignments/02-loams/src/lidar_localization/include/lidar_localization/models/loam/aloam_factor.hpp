@@ -229,7 +229,7 @@ public:
 		// Eigen::Vector3d t_last_curr{s_*parameters[1][0], s_*parameters[1][1], s_*parameters[1][2]};
 
 		Eigen::Vector3d last_point = q_last_curr * curr_point_ + t_last_curr;
-		Eigen::Vector3d vib_cross_via = (last_point - last_point_a_).cross(last_point - last_point_b_);
+		Eigen::Vector3d vib_cross_via = (last_point - last_point_b_).cross(last_point - last_point_a_);
 		Eigen::Vector3d vab = last_point_a_ - last_point_b_;
 
 		residuals[0] = vib_cross_via.norm() / vab.norm();
@@ -242,7 +242,7 @@ public:
 			// dline / dT
 			if(jacobians[0] != NULL)
 			{
-				Eigen::Map<Eigen::Matrix<doube, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
+				Eigen::Map<Eigen::Matrix<double, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
 				J_se3.setZero();
 				J_se3.block<1, 3>(0, 0) = dr_dlast_point;
 				J_se3.block<1, 3>(0, 3) = dr_dlast_point * Sophus::SO3d::hat(-last_point);
@@ -266,8 +266,8 @@ class LidarPlaneAnalyticFactor : public ceres::SizedCostFunction<1, 7>
 public:
 	LidarPlaneAnalyticFactor(Eigen::Vector3d curr_point, Eigen::Vector3d last_point_j,
 					 Eigen::Vector3d last_point_l, Eigen::Vector3d last_point_m, double s) :
-			curr_point_(curr_point), last_point_j_(last_point_a), 
-			last_point_m_(last_point_m), last_point_l_(last_point_b), s_(s)
+			curr_point_(curr_point), last_point_j_(last_point_j), 
+			last_point_m_(last_point_m), last_point_l_(last_point_l), s_(s)
 	{}
 	~LidarPlaneAnalyticFactor() {}
 
@@ -280,14 +280,14 @@ public:
 		Eigen::Vector3d plane_unit_norm = (last_point_j_ - last_point_l_).cross(last_point_j_ - last_point_m_);
 		plane_unit_norm.normalize();
 
-		residuals[0] = (last_point - last_point_j_) * plane_unit_norml;
+		residuals[0] = (last_point - last_point_j_).transpose() * plane_unit_norm;
 		if(jacobians != NULL && jacobians[0] != NULL)
 		{
 			// dplane / dT		
-			Eigen::Map<Eigen::Matrix<doube, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
+			Eigen::Map<Eigen::Matrix<double, 1, 7, Eigen::RowMajor> > J_se3(jacobians[0]);
 			J_se3.setZero();
-			J_se3.block<1, 3>(0, 0) = plane_unit_norm.;
-			J_se3.block<1, 3>(0, 3) = plane_unit_norm * Sophus::SO3d::hat(-last_point);			
+			J_se3.block<1, 3>(0, 0) = plane_unit_norm.transpose();
+			J_se3.block<1, 3>(0, 3) = plane_unit_norm.transpose() * Sophus::SO3d::hat(-last_point);			
 		}
 
 	}
@@ -300,6 +300,5 @@ public:
 
 private:
 	Eigen::Vector3d curr_point_, last_point_j_, last_point_l_, last_point_m_;
-	Eigen::Vector3d ljm_norm;
-	double s;
+	double s_;
 };

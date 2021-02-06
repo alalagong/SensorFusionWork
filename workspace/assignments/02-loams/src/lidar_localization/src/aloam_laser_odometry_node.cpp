@@ -57,6 +57,7 @@
 #include "lidar_localization/utils/tic_toc.h"
 
 #include "lidar_localization/models/loam/aloam_factor.hpp"
+#include "glog/logging.h"
 
 #define DISTORTION 0
 
@@ -100,8 +101,9 @@ double para_q[4] = {0, 0, 0, 1};
 double para_t[3] = {0, 0, 0};
 
 Sophus::SE3d optimal_T;
-Eigen::Map<Eigen::Quaterniond> q_last_curr(optimal_T.so3().data());
-Eigen::Vector3d& t_last_curr = optimal_T.translation();
+Sophus::SE3d T_w_curr;
+// Eigen::Map<Eigen::Quaterniond> q_last_curr(optimal_T.so3().data());
+// Eigen::Vector3d& t_last_curr = optimal_T.translation();
 // Eigen::Map<Eigen::Quaterniond> q_last_curr(para_q);
 // Eigen::Map<Eigen::Vector3d> t_last_curr(para_t);
 
@@ -123,10 +125,11 @@ void TransformToStart(PointType const *const pi, PointType *const po)
     else
         s = 1.0;
     //s = 1;
-    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
-    Eigen::Vector3d t_point_last = s * t_last_curr;
+    // Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
+    // Eigen::Vector3d t_point_last = s * t_last_curr;
     Eigen::Vector3d point(pi->x, pi->y, pi->z);
-    Eigen::Vector3d un_point = q_point_last * point + t_point_last;
+    // Eigen::Vector3d un_point = q_point_last * point + t_point_last;
+    Eigen::Vector3d un_point = optimal_T * point;
 
     po->x = un_point.x();
     po->y = un_point.y();
@@ -143,7 +146,8 @@ void TransformToEnd(PointType const *const pi, PointType *const po)
     TransformToStart(pi, &un_point_tmp);
 
     Eigen::Vector3d un_point(un_point_tmp.x, un_point_tmp.y, un_point_tmp.z);
-    Eigen::Vector3d point_end = q_last_curr.inverse() * (un_point - t_last_curr);
+    // Eigen::Vector3d point_end = q_last_curr.inverse() * (un_point - t_last_curr);
+    Eigen::Vector3d point_end = optimal_T.inverse() * un_point;
 
     po->x = point_end.x();
     po->y = point_end.y();
@@ -291,12 +295,12 @@ int main(int argc, char **argv)
                     // ceres::LocalParameterization *q_parameterization =
                     //     new ceres::EigenQuaternionParameterization();
                     ceres::LocalParameterization *local_parameterization =
-                        new ceres::SE3Parameterization();
+                        new SE3Parameterization();
                     ceres::Problem::Options problem_options;
                     ceres::Problem problem(problem_options);
                     // problem.AddParameterBlock(para_q, 4, q_parameterization);
                     // problem.AddParameterBlock(para_t, 3);
-                    problem.AddParameterBlock(optimal_T, SE3d::num_parameters, local_parameterization);
+                    problem.AddParameterBlock(optimal_T.data(), Sophus::SE3d::num_parameters, local_parameterization);
 
                     pcl::PointXYZI pointSel;
                     std::vector<int> pointSearchInd;
@@ -386,7 +390,7 @@ int main(int argc, char **argv)
                             else
                                 s = 1.0;
                             // ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
-                            ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::Create(curr_point, last_point_a, last_point_b, s);
+                            ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::create(curr_point, last_point_a, last_point_b, s);
                             problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                             corner_correspondence++;
                         }
@@ -485,7 +489,7 @@ int main(int argc, char **argv)
                                 else
                                     s = 1.0;
                                 // ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
-                                ceres::CostFunction *cost_function = LidarPlaneAnalyticFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                ceres::CostFunction *cost_function = LidarPlaneAnalyticFactor::create(curr_point, last_point_a, last_point_b, last_point_c, s);
                                 problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                                 plane_correspondence++;
                             }
@@ -493,7 +497,7 @@ int main(int argc, char **argv)
                     }
 
                     //printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-                    printf("data association time %f ms \n", t_data.toc());
+                    // printf("data association time %f ms \n", t_data.toc());
 
                     if ((corner_correspondence + plane_correspondence) < 10)
                     {
@@ -507,12 +511,15 @@ int main(int argc, char **argv)
                     options.minimizer_progress_to_stdout = false;
                     ceres::Solver::Summary summary;
                     ceres::Solve(options, &problem, &summary);
+                    LOG(INFO) << summary.FullReport();
                     printf("solver time %f ms \n", t_solver.toc());
                 }
-                printf("optimization twice time %f \n", t_opt.toc());
+                // printf("optimization twice time %f \n", t_opt.toc());
 
-                t_w_curr = t_w_curr + q_w_curr * t_last_curr;
-                q_w_curr = q_w_curr * q_last_curr;
+                // t_w_curr = t_w_curr + q_w_curr * t_last_curr;
+                // q_w_curr = q_w_curr * q_last_curr;
+                T_w_curr = T_w_curr * optimal_T;
+
             }
 
             TicToc t_pub;
@@ -522,13 +529,15 @@ int main(int argc, char **argv)
             laserOdometry.header.frame_id = "/map";
             laserOdometry.child_frame_id = "/velo_link";
             laserOdometry.header.stamp = ros::Time().fromSec(timeSurfPointsLessFlat);
-            laserOdometry.pose.pose.orientation.x = q_w_curr.x();
-            laserOdometry.pose.pose.orientation.y = q_w_curr.y();
-            laserOdometry.pose.pose.orientation.z = q_w_curr.z();
-            laserOdometry.pose.pose.orientation.w = q_w_curr.w();
-            laserOdometry.pose.pose.position.x = t_w_curr.x();
-            laserOdometry.pose.pose.position.y = t_w_curr.y();
-            laserOdometry.pose.pose.position.z = t_w_curr.z();
+            Eigen::Quaterniond qwc = T_w_curr.so3().unit_quaternion();
+            Eigen::Vector3d twc = T_w_curr.translation();
+            laserOdometry.pose.pose.orientation.x = qwc.x();
+            laserOdometry.pose.pose.orientation.y = qwc.y();
+            laserOdometry.pose.pose.orientation.z = qwc.z();
+            laserOdometry.pose.pose.orientation.w = qwc.w();
+            laserOdometry.pose.pose.position.x = twc.x();
+            laserOdometry.pose.pose.position.y = twc.y();
+            laserOdometry.pose.pose.position.z = twc.z();
             pubLaserOdometry.publish(laserOdometry);
 
             geometry_msgs::PoseStamped laserPose;
@@ -599,8 +608,8 @@ int main(int argc, char **argv)
                 laserCloudFullRes3.header.frame_id = "/camera";
                 pubLaserCloudFullRes.publish(laserCloudFullRes3);
             }
-            printf("publication time %f ms \n", t_pub.toc());
-            printf("whole laserOdometry time %f ms \n \n", t_whole.toc());
+            // printf("publication time %f ms \n", t_pub.toc());
+            // printf("whole laserOdometry time %f ms \n \n", t_whole.toc());
             if(t_whole.toc() > 100)
                 ROS_WARN("odometry process over 100ms");
 

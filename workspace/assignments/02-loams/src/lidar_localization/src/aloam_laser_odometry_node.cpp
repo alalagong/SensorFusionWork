@@ -391,6 +391,7 @@ int main(int argc, char **argv)
                                 s = 1.0;
                             // ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
                             ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::create(curr_point, last_point_a, last_point_b, s);
+                            // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
                             problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                             corner_correspondence++;
                         }
@@ -490,6 +491,7 @@ int main(int argc, char **argv)
                                     s = 1.0;
                                 // ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
                                 ceres::CostFunction *cost_function = LidarPlaneAnalyticFactor::create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
                                 problem.AddResidualBlock(cost_function, loss_function, optimal_T.data());
                                 plane_correspondence++;
                             }

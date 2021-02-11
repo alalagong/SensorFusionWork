@@ -79,11 +79,10 @@ static Eigen::Matrix4f point2point(Eigen::Matrix3Xf& X, Eigen::Matrix3Xf& Y, Eig
     Eigen::Matrix3Xf X_trans = X;   
     Eigen::Affine3f transformation;
     static int flag = 0;      
-    transformation.matrix() =predict_transfom;  // init value
+    transformation.matrix() = predict_transfom;  // init value
     X_trans = transformation*X;
     double match_error = 1e6;
-    
-    // ICP
+
     for(int icp=0; icp<max_iter; ++icp) {
         //[1] Find closest point
         #pragma omp parallel for
@@ -91,31 +90,31 @@ static Eigen::Matrix4f point2point(Eigen::Matrix3Xf& X, Eigen::Matrix3Xf& Y, Eig
             Y_permutated.col(i) = Y.col(kdtree.closest(X_trans.col(i).data()));
         }
         // LOG(INFO) << "before align two pooint is " <<  X.col(5).transpose() << " and " << Y_permutated.col(5).transpose() << std::endl;
-        Eigen::VectorXf point_error = (X_trans-Y_permutated).colwise().norm();        
-        match_error = point_error.norm();
-        Eigen::Affine3f transformation_start = transformation;
+        // Eigen::VectorXf point_error = (X_trans-Y_permutated).colwise().norm();        
+        // match_error = point_error.norm();
+        // Eigen::Affine3f transformation_start = transformation;
         //[2] Computer rotation and translation
-        for(int outer=0; outer<30; ++outer) {         
+        // for(int outer=0; outer<30; ++outer) {         
                 
             //[2.1] Compute weights
             W = (X_trans-Y_permutated).colwise().norm();
             
-            std::vector<float> W_v;
-            for(int i=0; i<W.rows(); ++i)
-            {
-                W_v.push_back(W(i));
-            }
+            // std::vector<float> W_v;
+            // for(int i=0; i<W.rows(); ++i)
+            // {
+            //     W_v.push_back(W(i));
+            // }
 
-            int median = floor(W.rows()*0.7-1);
-            std::nth_element(W_v.begin(),W_v.begin()+median, W_v.end());
-            double p = std::max(max_corr_dist, W_v[median]);
-            // double p = max_corr_dist;
+            // int median = floor(W.rows()*0.7-1);
+            // std::nth_element(W_v.begin(),W_v.begin()+median, W_v.end());
+            // double p = std::max(max_corr_dist, W_v[median]);
+            double p = max_corr_dist*max_corr_dist;
             // tukey weight
             for(int i=0; i<W.rows(); ++i) {
                 if(W(i) > p) 
                     W(i) = 0.0;
                 else 
-                    W(i) = std::pow((1.0 - std::pow(W(i)/p,2.0)), 2.0);;
+                    W(i) = 1.0; //std::pow((1.0 - std::pow(W(i)/p,2.0)), 2.0);;
             }
             // W = Eigen::VectorXf::Ones(X_trans.cols());
             // Normalize weight vector
@@ -134,13 +133,19 @@ static Eigen::Matrix4f point2point(Eigen::Matrix3Xf& X, Eigen::Matrix3Xf& Y, Eig
             //[2.3] Compute transformation
             Eigen::Affine3f transformation_temp;
             Eigen::Matrix3f sigma = X_trans * w_normalized.asDiagonal() * Y_permutated.transpose();
-            Eigen::JacobiSVD<Eigen::Matrix3f> svd(sigma, Eigen::ComputeFullU | Eigen::ComputeFullV);
-            if(svd.matrixU().determinant()*svd.matrixV().determinant() < 0.0) {
-                Eigen::Vector3f S = Eigen::Vector3f::Ones(); S(2) = -1.0;
-                transformation_temp.linear().noalias() = svd.matrixV()*S.asDiagonal()*svd.matrixU().transpose();
-            } else {
-                transformation_temp.linear().noalias() = svd.matrixV()*svd.matrixU().transpose();
-            }
+            Eigen::JacobiSVD<Eigen::Matrix3f> svd(sigma  , Eigen::ComputeFullU | Eigen::ComputeFullV);
+            // if(svd.matrixU().determinant()*svd.matrixV().determinant() < 0.0) {
+            //     // Eigen::Vector3f S = Eigen::Vector3f::Ones(); S(0) = -1.0;S(1) = -1.0;S(2) = -1.0;
+            //     transformation_temp.linear().noalias() = -svd.matrixV()*svd.matrixU().transpose();
+            // } else {
+            //     transformation_temp.linear().noalias() = svd.matrixV()*svd.matrixU().transpose();
+            // }
+            double det = (svd.matrixV()*svd.matrixU().transpose()).determinant();
+            Eigen::Vector3f S = Eigen::Vector3f::Ones(); 
+            // S(0) = 1.f/det;
+            // S(1) = 1.f/det;
+            S(2) = det;
+            transformation_temp.linear().noalias() = svd.matrixV()*S.asDiagonal()*svd.matrixU().transpose();
             transformation_temp.translation().noalias() = Y_mean - transformation_temp.linear()*X_mean;
             
             //[2.4] Re-apply mean
@@ -151,33 +156,38 @@ static Eigen::Matrix4f point2point(Eigen::Matrix3Xf& X, Eigen::Matrix3Xf& Y, Eig
             Eigen::Matrix3Xf X_trans_new = transformation_temp*X_trans;
 
             // [2.6] is use transfom
-            Eigen::VectorXf point_error = (X_trans_new-Y_permutated).colwise().norm();
-            double err = point_error.transpose()* w_normalized.asDiagonal() * point_error;
-            if(err > match_error+euc_fitness_eps)
-            {               
-                LOG(INFO) << "error " << match_error << "increase to " << err << " so break ";
-                break;
-            }   
-            else
-            {
-                X_trans = X_trans_new;
-                transformation = transformation_temp*transformation;
-                match_error = err;
-            }    
+            // Eigen::VectorXf point_error = (X_trans_new-Y_permutated).colwise().norm();
+            // double err = point_error.transpose()* w_normalized.asDiagonal() * point_error;
+            // if(err > match_error+euc_fitness_eps)
+            // {               
+            //     LOG(INFO) << "error " << match_error << "increase to " << err << " so break ";
+            //     break;
+            // }   
+            // else
+            // {
+            if(transformation_temp.translation().norm() < trans_eps) break;
+            if(fabs((acos(transformation_temp.linear().trace()-1.f) / 2.f)) < trans_eps) break;
+                
+            X_trans = X_trans_new;
+            transformation = transformation_temp*transformation;
+                // match_error = err;
+            // }    
 
             //[3] Stopping criteria
-            double stop1 = (X_trans-Xo1).colwise().norm().maxCoeff();
-            Xo1 = X_trans;
-            if(stop1 < trans_eps) break;
-            if(transformation_temp.translation().norm() < trans_eps) break;
-        }
+            // double stop1 = (X_trans-Xo1).colwise().norm().maxCoeff();
+            // Xo1 = X_trans;
+            // if(stop1 < trans_eps) break;
+        // }
         //[4] Stopping criteria
-        double stop2 = (X_trans-Xo2).colwise().norm().maxCoeff();
-        Xo2 = X_trans;
-        if(stop2 < trans_eps) break;
-        // double translation_change = transformation.translation().norm() - transformation_start.translation().norm();
-        // if(translation_change < trans_eps) break;
-        // if(match_error < euc_fitness_eps) break;
+        // float translation_magnitude = transformation.translation().norm() - transformation_start.translation().norm();
+        // if(translation_magnitude < trans_eps) break;
+        // float rotation_magnitude = fabs(acos(transformation.linear().trace()-1.f / 2.f)) - 
+        //                             fabs(acos(transformation_start.linear().trace()-1.f / 2.f));
+        // if(rotation_magnitude < trans_eps) break;
+        
+        // double stop2 = (X_trans-Xo2).colwise().norm().maxCoeff();
+        // Xo2 = X_trans;
+        // if(stop2 < trans_eps) break;
     }
 
     X = transformation*X;

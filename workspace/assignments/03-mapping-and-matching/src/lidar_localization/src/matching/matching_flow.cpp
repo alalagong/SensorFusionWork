@@ -112,10 +112,32 @@ bool MatchingFlow::UpdateMatching() {
         //
 
         // naive implementation:
-        Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
+        // Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
         
-        matching_ptr_->SetInitPose(init_pose);
-        matching_ptr_->SetInited();
+        // matching_ptr_->SetInitPose(init_pose);
+        // matching_ptr_->SetInited();
+
+        //! GNSS  matrix4
+        // matching_ptr_->SetGNSSPose(current_gnss_data_.pose);
+
+        //! GNSS position + ScanContexy
+
+        // if(!matching_ptr_->SetScanContextPose(current_cloud_data_))
+        //     return false;
+
+        // Eigen::Matrix4f init_pose_sc = matching_ptr_->GetInitPose();
+        // Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
+        
+        // // position
+        // init_pose.block<3,1>(0,3) = current_gnss_data_.pose.block<3,1>(0,3);
+        // // rotation
+        // init_pose.block<3,3>(0,0) = init_pose_sc.block<3,3>(0,0);
+        // matching_ptr_->SetInitPose(init_pose);
+        // matching_ptr_->SetInited();
+        
+        //! ScanContext  matrix4
+        if(!matching_ptr_->SetScanContextPose(current_cloud_data_))
+            return false;
     }
 
     return matching_ptr_->Update(current_cloud_data_, laser_odometry_);

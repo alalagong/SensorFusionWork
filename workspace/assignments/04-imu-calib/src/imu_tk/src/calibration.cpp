@@ -130,17 +130,17 @@ public:
                                   double(sample_(2)));
     CalibratedTriad_<double> calib_triad(
       // mis_yz, mis_zy, mis_zx:
-      0.0, 0.0, 0.0
+      0.0, 0.0, 0.0,
       // mis_xz, mis_xy, mis_yx:
-      params[0][0], params[0][1], params[0][2],
+      parameters[0][0], parameters[0][1], parameters[0][2],
       //    s_x,    s_y,    s_z:
-      params[0][3], params[0][4], params[0][5], 
+      parameters[0][3], parameters[0][4], parameters[0][5], 
       //    b_x,    b_y,    b_z: 
-      params[0][6], params[0][7], params[0][8] 
+      parameters[0][6], parameters[0][7], parameters[0][8] 
     );
 
     Eigen::Matrix<double, 3, 1> Xu = calib_triad.unbiasNormalize( X );
-    residuals[0] = double (g_mag_)*double (g_mag_) - calib_samp.normSqr();
+    residuals[0] = double (g_mag_)*double (g_mag_) - Xu.norm()*Xu.norm();
 
     if(jacobians != NULL)
     {
@@ -295,10 +295,13 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     //
     // TODO: implement lower triad model here
     //
-    acc_calib_params[0] = init_acc_calib_.misYZ();
-    acc_calib_params[1] = init_acc_calib_.misZY();
-    acc_calib_params[2] = init_acc_calib_.misZX();
-    
+    // acc_calib_params[0] = init_acc_calib_.misYZ();
+    // acc_calib_params[1] = init_acc_calib_.misZY();
+    // acc_calib_params[2] = init_acc_calib_.misZX();
+    acc_calib_params[0] = init_acc_calib_.misXZ();
+    acc_calib_params[1] = init_acc_calib_.misXY();
+    acc_calib_params[2] = init_acc_calib_.misYX();
+
     acc_calib_params[3] = init_acc_calib_.scaleX();
     acc_calib_params[4] = init_acc_calib_.scaleY();
     acc_calib_params[5] = init_acc_calib_.scaleZ();
@@ -330,10 +333,14 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     ceres::Problem problem;
     for( int i = 0; i < static_samples.size(); i++)
     {
-      ceres::CostFunction* cost_function = MultiPosAccResidual<_T>::Create ( 
+      // ceres::CostFunction* cost_function = MultiPosAccResidual<_T>::Create ( 
+      //   g_mag_, static_samples[i].data() 
+      // );
+       ceres::CostFunction* cost_function = MultiPosAccFactor<_T>::create ( 
         g_mag_, static_samples[i].data() 
       );
 
+      problem.AddParameterBlock(acc_calib_params.data(), 9);
       problem.AddResidualBlock ( 
         cost_function,           /* error fuction */
         NULL,                    /* squared loss */
@@ -364,20 +371,32 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     return false;
   }
 
-  acc_calib_ = CalibratedTriad_<_T>( 
-    //
-    // TODO: implement lower triad model here
-    // 
-    min_cost_calib_params[0],
-    min_cost_calib_params[1],
-    min_cost_calib_params[2],
-    0,0,0,
-    min_cost_calib_params[3],
-    min_cost_calib_params[4],
-    min_cost_calib_params[5],
-    min_cost_calib_params[6],
-    min_cost_calib_params[7],
-    min_cost_calib_params[8] 
+  // acc_calib_ = CalibratedTriad_<_T>( 
+  //   //
+  //   // TODO: implement lower triad model here
+  //   // 
+  //   min_cost_calib_params[0],
+  //   min_cost_calib_params[1],
+  //   min_cost_calib_params[2],
+  //   0,0,0,
+  //   min_cost_calib_params[3],
+  //   min_cost_calib_params[4],
+  //   min_cost_calib_params[5],
+  //   min_cost_calib_params[6],
+  //   min_cost_calib_params[7],
+  //   min_cost_calib_params[8] 
+  // );
+    acc_calib_ = CalibratedTriad_<_T>( 
+      0,0,0,
+      min_cost_calib_params[0],
+      min_cost_calib_params[1],
+      min_cost_calib_params[2],
+      min_cost_calib_params[3],
+      min_cost_calib_params[4],
+      min_cost_calib_params[5],
+      min_cost_calib_params[6],
+      min_cost_calib_params[7],
+      min_cost_calib_params[8] 
   );
   
   calib_acc_samples_.reserve(n_samps);

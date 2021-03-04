@@ -16,13 +16,14 @@ GeographicLib::LocalCartesian lidar_localization::GNSSData::geo_converter;
 
 namespace lidar_localization {
 void GNSSData::InitOriginPosition() {
-    geo_converter.Reset(latitude, longitude, altitude);
+    origin_longitude = 8.39045;
+    origin_latitude = 48.9827;
+    origin_altitude = 116.396;
 
-    origin_longitude = longitude;
-    origin_latitude = latitude;
-    origin_altitude = altitude;
+    geo_converter.Reset(origin_latitude, origin_longitude, origin_altitude);
 
     origin_position_inited = true;
+    LOG(INFO) << "origin GPS is" << origin_longitude << " " << origin_latitude << " " << origin_altitude;
 }
 
 void GNSSData::UpdateXYZ() {

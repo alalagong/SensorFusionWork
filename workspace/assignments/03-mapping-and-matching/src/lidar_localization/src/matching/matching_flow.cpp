@@ -118,10 +118,9 @@ bool MatchingFlow::UpdateMatching() {
         // matching_ptr_->SetInited();
 
         //! GNSS  matrix4
-        // matching_ptr_->SetGNSSPose(current_gnss_data_.pose);
+        matching_ptr_->SetGNSSPose(current_gnss_data_.pose);
 
         //! GNSS position + ScanContexy
-
         // if(!matching_ptr_->SetScanContextPose(current_cloud_data_))
         //     return false;
 
@@ -136,8 +135,8 @@ bool MatchingFlow::UpdateMatching() {
         // matching_ptr_->SetInited();
         
         //! ScanContext  matrix4
-        if(!matching_ptr_->SetScanContextPose(current_cloud_data_))
-            return false;
+        // if(!matching_ptr_->SetScanContextPose(current_cloud_data_))
+        //     return false;
     }
 
     return matching_ptr_->Update(current_cloud_data_, laser_odometry_);

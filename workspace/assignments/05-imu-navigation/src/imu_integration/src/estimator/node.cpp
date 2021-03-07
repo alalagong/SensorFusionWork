@@ -14,8 +14,9 @@ int main(int argc, char** argv) {
     activity.Init();
     
     // 100 Hz:
+    int loop = 2200;
     ros::Rate loop_rate(100);
-    while (ros::ok())
+    while (ros::ok() && (loop--)>0)
     {
         ros::spinOnce();
 
@@ -23,7 +24,7 @@ int main(int argc, char** argv) {
 
         loop_rate.sleep();
     } 
-    // activity.ComputeError();
+    activity.ComputeError();
 
     return EXIT_SUCCESS;
 }

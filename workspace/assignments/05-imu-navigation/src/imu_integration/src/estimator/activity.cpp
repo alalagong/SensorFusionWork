@@ -191,10 +191,10 @@ bool Activity::UpdatePose(void) {
         }
 
         // save
-        // OdomData odom_data;
-        // odom_data.time = imu_data_buff_.at(1).time;
-        // odom_data.pose = pose_;
-        // result_buff_.push_back(odom_data);
+        OdomData odom_data;
+        odom_data.time = imu_data_buff_.at(1).time;
+        odom_data.pose = pose_;
+        result_buff_.push_back(odom_data);
 
         // move forward -- 
         // NOTE: this is NOT fixed. you should update your buffer according to the method of your choice:
@@ -488,7 +488,7 @@ void Activity::UpdatePosition(const double &delta_t, const Eigen::Vector3d &velo
 }
 
 void Activity::ComputeError(void) {
-    
+
     error_ = 0;
     // if(result_buff_.size() != odom_data_buff_.size())
     //      LOG(WARNING)<<"error ! " << odom_data_buff_.size() << " and " << result_buff_.size();
@@ -505,15 +505,36 @@ void Activity::ComputeError(void) {
     while(abs(delta_t) > 0.009)
     {
         if(delta_t > 0.009)
+        {
             result_buff_.pop_front();
+
+            const OdomData &odom_data_curr = odom_data_buff_.at(0);
+            const OdomData &imu_data_curr = result_buff_.at(0);
+    
+            delta_t = odom_data_curr.time - imu_data_curr.time;
+            continue;
+        }    
         if(delta_t < -0.009)
+        {
             odom_data_buff_.pop_front();
+
+            const OdomData &odom_data_curr = odom_data_buff_.at(0);
+            const OdomData &imu_data_curr = result_buff_.at(0);
+    
+            delta_t = odom_data_curr.time - imu_data_curr.time;
+            continue;
+        }
 
         if(odom_data_buff_.size() == 0 || result_buff_.size() == 0)
             return; 
     }
+
+    if(result_buff_.size() != odom_data_buff_.size())
+        LOG(WARNING)<<"error ! " << odom_data_buff_.size() << " and " << result_buff_.size();
+
     size_t num = odom_data_buff_.size() < result_buff_.size() ? odom_data_buff_.size() : result_buff_.size();
 
+    LOG(INFO) << num;
     for(size_t i = 0; i < num; ++i)
     {
         const OdomData &odom_data_curr = odom_data_buff_.at(i);

@@ -11,10 +11,10 @@ int main(int argc, char** argv) {
     imu_integration::generator::Activity activity;
 
     activity.Init();
-    
+    int loop = 2200;
     // 100 Hz:
     ros::Rate loop_rate(100);
-    while (ros::ok())
+    while (ros::ok() && (loop--)>0)
     {
         ros::spinOnce();
 

@@ -1,5 +1,6 @@
 imu:
     topic_name: /sim/sensor/imu
+    integ_method: rk4    # euler / mid / rk4
     gravity:
         x:  0.0
         y:  0.0

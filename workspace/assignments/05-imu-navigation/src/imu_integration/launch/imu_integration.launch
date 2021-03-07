@@ -10,7 +10,7 @@
 
     <node pkg="imu_integration" type="estimator_node" name="imu_integration_estimator_node" clear_params="true">
         <!-- load default params -->
-        <rosparam command="load" file="$(find imu_integration)/config/generator.yaml" />
+        <rosparam command="load" file="$(find imu_integration)/config/estimator.yaml" />
 
         <!-- custom configuration -->
     </node>

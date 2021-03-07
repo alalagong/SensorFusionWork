@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
 
         loop_rate.sleep();
     } 
+    // activity.ComputeError();
 
     return EXIT_SUCCESS;
 }

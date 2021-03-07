@@ -30,6 +30,7 @@ class Activity {
     Activity(void);
     void Init(void);
     bool Run(void);
+    void ComputeError(void);
   private:
     // workflow:
     bool ReadData(void);
@@ -54,19 +55,45 @@ class Activity {
         const Eigen::Vector3d &linear_acc,
         const Eigen::Matrix3d &R
     );
+
     /**
-     * @brief  get angular delta
+     * @brief  get angular delta by euler
+     * @param  index_prev, previous imu measurement buffer index
+     * @param  angular_delta, angular delta output
+     * @return true if success false otherwise
+     */
+    bool GetAngularDeltaEuler(
+        const size_t index_prev, double &delta_t,
+        Eigen::Vector3d &angular_delta
+    );
+
+    /**
+     * @brief  get angular delta by mid-value
      * @param  index_curr, current imu measurement buffer index
      * @param  index_prev, previous imu measurement buffer index
      * @param  angular_delta, angular delta output
      * @return true if success false otherwise
      */
-    bool GetAngularDelta(
+    bool GetAngularDeltaMid(
         const size_t index_curr, const size_t index_prev,
         Eigen::Vector3d &angular_delta
     );
+
     /**
-     * @brief  get velocity delta
+     * @brief  get angular delta by RK4
+     * @param  index_prev, previous imu measurement buffer index
+     * @param  index_prev, previous imu measurement buffer index
+     * @param  q_last, corresponding orientation of previous imu measurement
+     * @param  angular_delta, angular delta output
+     * @return true if success false otherwise
+     */
+    bool GetAngularDeltaRK4(
+        const size_t index_curr, const size_t index_prev, 
+        Eigen::Vector3d &angular_delta
+    );
+
+    /**
+     * @brief  get velocity delta by mid or RK4 (have same type)
      * @param  index_curr, current imu measurement buffer index
      * @param  index_prev, previous imu measurement buffer index
      * @param  R_curr, corresponding orientation of current imu measurement
@@ -74,11 +101,24 @@ class Activity {
      * @param  velocity_delta, velocity delta output
      * @return true if success false otherwise
      */
-    bool GetVelocityDelta(
+    bool GetVelocityDeltaMid_RK4(
         const size_t index_curr, const size_t index_prev,
         const Eigen::Matrix3d &R_curr, const Eigen::Matrix3d &R_prev, 
         double &delta_t, Eigen::Vector3d &velocity_delta
     );
+
+    /**
+     * @brief  get velocity delta by Euler
+     * @param  index_prev, previous imu measurement buffer index
+     * @param  R_prev, corresponding orientation of previous imu measurement
+     * @param  velocity_delta, velocity delta output
+     * @return true if success false otherwise
+     */
+    bool GetVelocityDeltaEuler(
+        const size_t index_prev, const Eigen::Matrix3d &R_prev, 
+        double &delta_t, Eigen::Vector3d &velocity_delta
+    );
+
     /**
      * @brief  update orientation with effective rotation angular_delta
      * @param  angular_delta, effective rotation
@@ -109,6 +149,7 @@ class Activity {
     // data buffer:
     std::deque<IMUData> imu_data_buff_;
     std::deque<OdomData> odom_data_buff_;
+    std::deque<OdomData> result_buff_;
 
     // config:
     bool initialized_ = false;
@@ -128,6 +169,12 @@ class Activity {
     Eigen::Vector3d vel_ = Eigen::Vector3d::Zero();
 
     nav_msgs::Odometry message_odom_;
+
+    // size_t size_curr_;
+    // size_t index_imu_curr_;
+    size_t index_odom_curr_;
+    
+    double error_;
 };
 
 } // namespace estimator

@@ -7,7 +7,6 @@
 
 #include "imu_integration/estimator/activity.hpp"
 #include "glog/logging.h"
-
 namespace imu_integration {
 
 namespace estimator {
@@ -26,6 +25,7 @@ Activity::Activity(void)
 void Activity::Init(void) {
     // parse IMU config:
     private_nh_.param("imu/topic_name", imu_config_.topic_name, std::string("/sim/sensor/imu"));
+    private_nh_.param("imu/integ_method", imu_config_.integ_method, std::string("mid"));
     imu_sub_ptr_ = std::make_shared<IMUSubscriber>(private_nh_, imu_config_.topic_name, 1000000);
 
     // a. gravity constant:
@@ -69,24 +69,34 @@ bool Activity::Run(void) {
         if (UpdatePose()) {
             PublishPose();
         }
+        ReadData();
     }
-
     return true;
 }
 
 bool Activity::ReadData(void) {
     // fetch IMU measurements into buffer:
+    // size_t before_imu = imu_data_buff_.size();
+    // LOG(INFO) << "before has imu " << before_imu ;
     imu_sub_ptr_->ParseData(imu_data_buff_);
+    // size_t after_imu = imu_data_buff_.size();
+    // LOG(INFO) << "after has imu " << after_imu ;
+    // size_t add_imu = after_imu - before_imu;
 
     if (static_cast<size_t>(0) == imu_data_buff_.size())
         return false;
 
-    if (!initialized_) {
-        odom_ground_truth_sub_ptr->ParseData(odom_data_buff_);
+    // if (!initialized_) {
+    // size_t before_odom = odom_data_buff_.size();
+    // LOG(INFO) << "before has odom " << before_odom ;
+    odom_ground_truth_sub_ptr->ParseData(odom_data_buff_);
+    // size_t after_odom = odom_data_buff_.size();
+    // LOG(INFO) << "after has odom " << after_odom ;
+    // size_t add_odom = after_odom - before_odom;
 
-        if (static_cast<size_t>(0) == odom_data_buff_.size())
-            return false;
-    }
+    if (static_cast<size_t>(0) == odom_data_buff_.size())
+        return false;
+    // }
 
     return true;
 }
@@ -108,7 +118,7 @@ bool Activity::HasData(void) {
 bool Activity::UpdatePose(void) {
     if (!initialized_) {
         // use the latest measurement for initialization:
-        OdomData &odom_data = odom_data_buff_.back();
+        OdomData odom_data = odom_data_buff_.back();
         IMUData imu_data = imu_data_buff_.back();
 
         pose_ = odom_data.pose;
@@ -121,21 +131,75 @@ bool Activity::UpdatePose(void) {
 
         // keep the latest IMU measurement for mid-value integration:
         imu_data_buff_.push_back(imu_data);
+        odom_data_buff_.push_back(odom_data);
+
+        // size_curr = 1;
+        // index_imu_curr = 0;
+        index_odom_curr_ = 0;
     } else {
         //
         // TODO: implement your estimation here
         //
-        // get deltas:
+        if(imu_data_buff_.size() < static_cast<size_t>(2) )
+            return false;
+        
+        Eigen::Vector3d velocity_delta, angular_delta;
 
-        // update orientation:
+        if(imu_config_.integ_method == std::string("euler"))
+        {
+            const IMUData &imu_data_prev = imu_data_buff_.at(0);
+            const IMUData &imu_data_curr = imu_data_buff_.at(1);
 
-        // get velocity delta:
+            double delta_t = imu_data_curr.time - imu_data_prev.time;
+            
+            Eigen::Matrix3d R_prev = pose_.block<3,3>(0,0);
+            Eigen::Matrix3d R_curr;
+            // get deltas:
+            GetAngularDeltaEuler(0, delta_t, angular_delta);          
+            // update orientation:
+            UpdateOrientation(angular_delta, R_curr, R_prev);
+            // get velocity delta:
+            GetVelocityDeltaEuler(0, R_prev, delta_t, velocity_delta);
+            // update position:
+            UpdatePosition(delta_t, velocity_delta);
+        } else if (imu_config_.integ_method == std::string("mid"))
+        {
+            double delta_t = 0;
+            Eigen::Matrix3d R_prev = pose_.block<3,3>(0,0);
+            Eigen::Matrix3d R_curr;
+            // get deltas:
+            GetAngularDeltaMid(0, 1, angular_delta);          
+            // update orientation:
+            UpdateOrientation(angular_delta, R_curr, R_prev);
+            // get velocity delta:
+            GetVelocityDeltaMid_RK4(0, 1, R_curr, R_prev, delta_t, velocity_delta);
+            // update position:
+            UpdatePosition(delta_t, velocity_delta);
+        } else if (imu_config_.integ_method == std::string("rk4"))
+        {
+            double delta_t = 0;
+            Eigen::Matrix3d R_prev = pose_.block<3,3>(0,0);
+            Eigen::Matrix3d R_curr;
+            // get deltas:
+            GetAngularDeltaRK4(0, 1, angular_delta);          
+            // update orientation:
+            UpdateOrientation(angular_delta, R_curr, R_prev);
+            // get velocity delta:
+            GetVelocityDeltaMid_RK4(0, 1, R_curr, R_prev, delta_t, velocity_delta);
+            // update position:
+            UpdatePosition(delta_t, velocity_delta);
+        }
 
-        // update position:
+        // save
+        // OdomData odom_data;
+        // odom_data.time = imu_data_buff_.at(1).time;
+        // odom_data.pose = pose_;
+        // result_buff_.push_back(odom_data);
 
         // move forward -- 
         // NOTE: this is NOT fixed. you should update your buffer according to the method of your choice:
         imu_data_buff_.pop_front();
+        // index_odom_curr_++;
     }
     
     return true;
@@ -195,13 +259,35 @@ inline Eigen::Vector3d Activity::GetUnbiasedLinearAcc(
 }
 
 /**
- * @brief  get angular delta
+ * @brief  get angular delta by euler
+ * @param  index_prev, previous imu measurement buffer index
+ * @param  angular_delta, angular delta output
+ * @return true if success false otherwise
+ */
+bool Activity::GetAngularDeltaEuler(
+    const size_t index_prev, double &delta_t,
+    Eigen::Vector3d &angular_delta
+) {
+    if(imu_data_buff_.size() <= index_prev)
+        return false;
+    
+    const IMUData &imu_data_prev = imu_data_buff_.at(index_prev);
+    
+    Eigen::Vector3d angular_vel_prev = GetUnbiasedAngularVel(imu_data_prev.angular_velocity);
+    
+    angular_delta = delta_t*angular_vel_prev;
+    
+    return true;
+}
+
+/**
+ * @brief  get angular delta by mid-value
  * @param  index_curr, current imu measurement buffer index
  * @param  index_prev, previous imu measurement buffer index
  * @param  angular_delta, angular delta output
  * @return true if success false otherwise
  */
-bool Activity::GetAngularDelta(
+bool Activity::GetAngularDeltaMid(
     const size_t index_curr, const size_t index_prev,
     Eigen::Vector3d &angular_delta
 ) {
@@ -229,6 +315,66 @@ bool Activity::GetAngularDelta(
 }
 
 /**
+ * @brief  get angular delta by RK4
+ * @param  index_prev, previous imu measurement buffer index
+ * @param  index_prev, previous imu measurement buffer index
+ * @param  q_last, corresponding orientation of previous imu measurement
+ * @param  angular_delta, angular delta output
+ * @return true if success false otherwise
+ */
+bool Activity::GetAngularDeltaRK4(
+    const size_t index_curr, const size_t index_prev, 
+    Eigen::Vector3d &angular_delta
+) {
+    if (
+        index_curr <= index_prev ||
+        imu_data_buff_.size() <= index_curr
+    ) {
+        return false;
+    }
+
+    const IMUData &imu_data_curr = imu_data_buff_.at(index_curr);
+    const IMUData &imu_data_prev = imu_data_buff_.at(index_prev);
+
+    double delta_t = imu_data_curr.time - imu_data_prev.time;
+    
+    Eigen::Vector3d angular_vel_prev = GetUnbiasedAngularVel(imu_data_prev.angular_velocity);
+    Eigen::Vector3d angular_vel_curr = GetUnbiasedAngularVel(imu_data_curr.angular_velocity);
+    Eigen::Vector3d angular_vel_mid = 0.5f * (angular_vel_curr + angular_vel_prev);
+
+    //*********** 对四元数微分方程进行RK4 ************
+    // Eigen::Quaterniond k1, k2, k3, k4;
+    // Eigen::Quaterniond q1_linear, q2_linear, q3_linear, q4_linear;
+
+    // q1_linear = q_last;
+    // k1 = q1_linear * Eigen::Quaterniond(0, 0.5*angular_vel_prev);
+
+    // q2_linear = q_last + 0.5*delta_t*k1;
+    // k2 = q2_linear * Eigen::Quaterniond(0, 0.5*angular_vel_mid);
+
+    // q3_linear = q_last + 0.5*delta_t*k2;
+    // k3 = q3_linear * Eigen::Quaterniond(0, 0.5*angular_vel_mid);
+
+    // q4_linear = q_last * delta_t*k3;
+    // k4 = q4_linear * Eigen::Quaterniond(0, 0.5*angular_vel_curr);
+
+    // q_curr = q_last + 1.f/6.f*delta_t*(k1 + 2.f*k2 + 2.f*k3 + k4);
+    // q_curr.normalize();
+
+    //********** 对旋转矢量微分方程进行RK4 ***********
+    Eigen::Vector3d k1, k2, k3, k4;
+    
+    k1 = angular_vel_prev;
+    k2 = angular_vel_mid + 1.f/4.f*delta_t*k1.cross(angular_vel_mid);
+    k3 = angular_vel_mid + 1.f/4.f*delta_t*k2.cross(angular_vel_mid);
+    k4 = angular_vel_curr + 1.f/2.f*delta_t*k3.cross(angular_vel_curr);
+    
+    angular_delta = delta_t/6.f*(k1 + 2*k2 + 2*k3 + k4);
+
+    return true;
+}
+
+/**
  * @brief  get velocity delta
  * @param  index_curr, current imu measurement buffer index
  * @param  index_prev, previous imu measurement buffer index
@@ -237,7 +383,7 @@ bool Activity::GetAngularDelta(
  * @param  velocity_delta, velocity delta output
  * @return true if success false otherwise
  */
-bool Activity::GetVelocityDelta(
+bool Activity::GetVelocityDeltaMid_RK4(
     const size_t index_curr, const size_t index_prev,
     const Eigen::Matrix3d &R_curr, const Eigen::Matrix3d &R_prev, 
     double &delta_t, Eigen::Vector3d &velocity_delta
@@ -261,6 +407,29 @@ bool Activity::GetVelocityDelta(
     Eigen::Vector3d linear_acc_prev = GetUnbiasedLinearAcc(imu_data_prev.linear_acceleration, R_prev);
     
     velocity_delta = 0.5*delta_t*(linear_acc_curr + linear_acc_prev);
+
+    return true;
+}
+
+/**
+ * @brief  get velocity delta by Euler
+ * @param  index_prev, previous imu measurement buffer index
+ * @param  R_prev, corresponding orientation of previous imu measurement
+ * @param  velocity_delta, velocity delta output
+ * @return true if success false otherwise
+ */
+bool Activity::GetVelocityDeltaEuler(
+    const size_t index_prev, const Eigen::Matrix3d &R_prev, 
+    double &delta_t, Eigen::Vector3d &velocity_delta
+) {
+    if(imu_data_buff_.size() <= index_prev)
+        return false;
+
+    const IMUData &imu_data_prev = imu_data_buff_.at(index_prev);
+    
+    Eigen::Vector3d linear_acc_prev = GetUnbiasedLinearAcc(imu_data_prev.linear_acceleration, R_prev);
+
+    velocity_delta = delta_t*linear_acc_prev;
 
     return true;
 }
@@ -318,6 +487,76 @@ void Activity::UpdatePosition(const double &delta_t, const Eigen::Vector3d &velo
     vel_ += velocity_delta;
 }
 
+void Activity::ComputeError(void) {
+    
+    error_ = 0;
+    // if(result_buff_.size() != odom_data_buff_.size())
+    //      LOG(WARNING)<<"error ! " << odom_data_buff_.size() << " and " << result_buff_.size();
+
+    if(odom_data_buff_.size() == 0 || result_buff_.size() == 0)
+        return;
+            
+    // aligned
+    const OdomData &odom_data_curr = odom_data_buff_.at(0);
+    const OdomData &imu_data_curr = result_buff_.at(0);
+    
+    double delta_t = odom_data_curr.time - imu_data_curr.time;
+
+    while(abs(delta_t) > 0.009)
+    {
+        if(delta_t > 0.009)
+            result_buff_.pop_front();
+        if(delta_t < -0.009)
+            odom_data_buff_.pop_front();
+
+        if(odom_data_buff_.size() == 0 || result_buff_.size() == 0)
+            return; 
+    }
+    size_t num = odom_data_buff_.size() < result_buff_.size() ? odom_data_buff_.size() : result_buff_.size();
+
+    for(size_t i = 0; i < num; ++i)
+    {
+        const OdomData &odom_data_curr = odom_data_buff_.at(i);
+        const OdomData &imu_data_curr = result_buff_.at(i);
+
+        double delta_t = odom_data_curr.time - imu_data_curr.time;
+    
+        // odom too late
+        // if(delta_t > 0.009)
+        // {
+        //     LOG(INFO) << "Time different, Odom time is " << odom_data_curr.time << 
+        //             " Imu time is " << imu_data_curr.time << std::endl;
+            // double time_odom = odom_data_curr.time;
+            // double time_imu = imu_data_curr.time;
+
+            // while((time_odom - time_imu) > 0.009)
+            // {
+            //     if(index_odom_curr_ == 0)
+            //         break;
+            //     index_odom_curr_--;
+            //     time_odom = odom_data_buff_.at(index_odom_curr_).time;
+            // }
+        // }
+        // odom too early
+        // else if(delta_t < -0.009)
+        // {
+        //     LOG(INFO) << "Time different, Odom time is " << odom_data_curr.time << 
+        //             " Imu time is " << imu_data_curr.time << std::endl;
+        //     double time_odom = odom_data_curr.time;
+        //     double time_imu = imu_data_curr.time;
+
+        //     while((time_odom - time_imu) < -0.009)
+        //     {
+        //         if(index_odom_curr_ >= odom_data_buff_.size()-1)
+        //             break;
+        //         index_odom_curr_++;
+        //         time_odom = odom_data_buff_.at(index_odom_curr_).time;
+        //     }
+        // }else
+            error_ += (odom_data_curr.pose.block<3,1>(0,3) - pose_.block<3,1>(0,3)).norm();
+    }
+    LOG(INFO) << "this traj mean error is " << error_/num;
+}
 
 } // namespace estimator
 

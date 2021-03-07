@@ -19,6 +19,7 @@ struct IMUConfig {
     std::string device_name;
     std::string frame_id;
     std::string topic_name;
+    std::string integ_method;
 
     // gravity constant:
     struct {

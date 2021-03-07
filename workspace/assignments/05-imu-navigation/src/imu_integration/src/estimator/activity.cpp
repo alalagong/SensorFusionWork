@@ -27,6 +27,7 @@ void Activity::Init(void) {
     private_nh_.param("imu/topic_name", imu_config_.topic_name, std::string("/sim/sensor/imu"));
     private_nh_.param("imu/integ_method", imu_config_.integ_method, std::string("mid"));
     imu_sub_ptr_ = std::make_shared<IMUSubscriber>(private_nh_, imu_config_.topic_name, 1000000);
+    LOG(INFO) << imu_config_.integ_method;
 
     // a. gravity constant:
     private_nh_.param("imu/gravity/x", imu_config_.gravity.x,  0.0);
@@ -147,6 +148,7 @@ bool Activity::UpdatePose(void) {
 
         if(imu_config_.integ_method == std::string("euler"))
         {
+            // LOG(INFO) << "use euler";
             const IMUData &imu_data_prev = imu_data_buff_.at(0);
             const IMUData &imu_data_curr = imu_data_buff_.at(1);
 
@@ -164,28 +166,30 @@ bool Activity::UpdatePose(void) {
             UpdatePosition(delta_t, velocity_delta);
         } else if (imu_config_.integ_method == std::string("mid"))
         {
+            // LOG(INFO) << "use mid";
             double delta_t = 0;
             Eigen::Matrix3d R_prev = pose_.block<3,3>(0,0);
             Eigen::Matrix3d R_curr;
             // get deltas:
-            GetAngularDeltaMid(0, 1, angular_delta);          
+            GetAngularDeltaMid(1, 0, angular_delta);   
             // update orientation:
             UpdateOrientation(angular_delta, R_curr, R_prev);
             // get velocity delta:
-            GetVelocityDeltaMid_RK4(0, 1, R_curr, R_prev, delta_t, velocity_delta);
+            GetVelocityDeltaMid_RK4(1, 0, R_curr, R_prev, delta_t, velocity_delta);
             // update position:
             UpdatePosition(delta_t, velocity_delta);
         } else if (imu_config_.integ_method == std::string("rk4"))
         {
+            // LOG(INFO) << "use rk4";            
             double delta_t = 0;
             Eigen::Matrix3d R_prev = pose_.block<3,3>(0,0);
             Eigen::Matrix3d R_curr;
             // get deltas:
-            GetAngularDeltaRK4(0, 1, angular_delta);          
+            GetAngularDeltaRK4(1, 0, angular_delta);          
             // update orientation:
             UpdateOrientation(angular_delta, R_curr, R_prev);
             // get velocity delta:
-            GetVelocityDeltaMid_RK4(0, 1, R_curr, R_prev, delta_t, velocity_delta);
+            GetVelocityDeltaMid_RK4(1, 0, R_curr, R_prev, delta_t, velocity_delta);
             // update position:
             UpdatePosition(delta_t, velocity_delta);
         }
@@ -490,8 +494,8 @@ void Activity::UpdatePosition(const double &delta_t, const Eigen::Vector3d &velo
 void Activity::ComputeError(void) {
 
     error_ = 0;
-    // if(result_buff_.size() != odom_data_buff_.size())
-    //      LOG(WARNING)<<"error ! " << odom_data_buff_.size() << " and " << result_buff_.size();
+    if(result_buff_.size() != odom_data_buff_.size())
+         LOG(WARNING)<<"error ! " << odom_data_buff_.size() << " and " << result_buff_.size();
 
     if(odom_data_buff_.size() == 0 || result_buff_.size() == 0)
         return;
@@ -500,28 +504,29 @@ void Activity::ComputeError(void) {
     const OdomData &odom_data_curr = odom_data_buff_.at(0);
     const OdomData &imu_data_curr = result_buff_.at(0);
     
-    double delta_t = odom_data_curr.time - imu_data_curr.time;
+    double delta = odom_data_curr.time - imu_data_curr.time;
+    LOG(INFO) << "delta time" << delta;
 
-    while(abs(delta_t) > 0.009)
+    while(abs(delta) > 0.009)
     {
-        if(delta_t > 0.009)
+        if(delta > 0.009)
         {
             result_buff_.pop_front();
 
             const OdomData &odom_data_curr = odom_data_buff_.at(0);
             const OdomData &imu_data_curr = result_buff_.at(0);
     
-            delta_t = odom_data_curr.time - imu_data_curr.time;
+            delta = odom_data_curr.time - imu_data_curr.time;
             continue;
         }    
-        if(delta_t < -0.009)
+        if(delta < -0.009)
         {
             odom_data_buff_.pop_front();
 
             const OdomData &odom_data_curr = odom_data_buff_.at(0);
             const OdomData &imu_data_curr = result_buff_.at(0);
     
-            delta_t = odom_data_curr.time - imu_data_curr.time;
+            delta = odom_data_curr.time - imu_data_curr.time;
             continue;
         }
 
@@ -541,40 +546,8 @@ void Activity::ComputeError(void) {
         const OdomData &imu_data_curr = result_buff_.at(i);
 
         double delta_t = odom_data_curr.time - imu_data_curr.time;
-    
-        // odom too late
-        // if(delta_t > 0.009)
-        // {
-        //     LOG(INFO) << "Time different, Odom time is " << odom_data_curr.time << 
-        //             " Imu time is " << imu_data_curr.time << std::endl;
-            // double time_odom = odom_data_curr.time;
-            // double time_imu = imu_data_curr.time;
-
-            // while((time_odom - time_imu) > 0.009)
-            // {
-            //     if(index_odom_curr_ == 0)
-            //         break;
-            //     index_odom_curr_--;
-            //     time_odom = odom_data_buff_.at(index_odom_curr_).time;
-            // }
-        // }
-        // odom too early
-        // else if(delta_t < -0.009)
-        // {
-        //     LOG(INFO) << "Time different, Odom time is " << odom_data_curr.time << 
-        //             " Imu time is " << imu_data_curr.time << std::endl;
-        //     double time_odom = odom_data_curr.time;
-        //     double time_imu = imu_data_curr.time;
-
-        //     while((time_odom - time_imu) < -0.009)
-        //     {
-        //         if(index_odom_curr_ >= odom_data_buff_.size()-1)
-        //             break;
-        //         index_odom_curr_++;
-        //         time_odom = odom_data_buff_.at(index_odom_curr_).time;
-        //     }
-        // }else
-            error_ += (odom_data_curr.pose.block<3,1>(0,3) - pose_.block<3,1>(0,3)).norm();
+        
+        error_ += (odom_data_curr.pose.block<3,1>(0,3) - imu_data_curr.pose.block<3,1>(0,3)).norm();
     }
     LOG(INFO) << "this traj mean error is " << error_/num;
 }

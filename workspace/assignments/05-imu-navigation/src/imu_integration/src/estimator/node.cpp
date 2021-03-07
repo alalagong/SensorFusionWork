@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
     activity.Init();
     
     // 100 Hz:
-    int loop = 2200;
+    int loop = 5000;
     ros::Rate loop_rate(100);
     while (ros::ok() && (loop--)>0)
     {

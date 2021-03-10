@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
     // 100 Hz:
     int loop = 5000;
     ros::Rate loop_rate(100);
-    while (ros::ok() && (loop--)>0)
+    while (ros::ok())
     {
         ros::spinOnce();
 

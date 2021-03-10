@@ -4,7 +4,7 @@ imu:
     gravity:
         x:  0.0
         y:  0.0
-        z: -9.81
+        z: -9.7942164704
     bias:
         angular_velocity:
             x: 0.0

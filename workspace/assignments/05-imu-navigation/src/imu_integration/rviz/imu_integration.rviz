@@ -83,7 +83,7 @@ Visualization Manager:
         Head Length: 0.009999999776482582
         Head Radius: 0.004999999888241291
         Shaft Length: 0.07999999821186066
-        Shaft Radius: 0.019999999552965164
+        Shaft Radius: 5
         Value: Arrow
       Topic: /pose/ground_truth
       Unreliable: false
@@ -117,7 +117,7 @@ Visualization Manager:
         Head Length: 0.009999999776482582
         Head Radius: 0.004999999888241291
         Shaft Length: 0.07999999821186066
-        Shaft Radius: 0.019999999552965164
+        Shaft Radius: 5
         Value: Arrow
       Topic: /pose/estimation
       Unreliable: false

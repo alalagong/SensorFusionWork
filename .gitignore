@@ -2,3 +2,4 @@ workspace/assignments/02-loams/src/lidar_localization/slam_data/trajectory/*
 
 workspace/assignments/04-imu-calib/src/imu_tk/bin/*
 workspace/assignments/04-imu-calib/src/imu_tk/lib/*
+workspace/data/*

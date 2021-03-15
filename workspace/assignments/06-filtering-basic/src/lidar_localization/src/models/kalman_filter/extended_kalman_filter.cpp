@@ -71,8 +71,10 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const YAML::Node& node) {
     COV.PRIOR.EPSILON = node["covariance"]["prior"]["epsilon"].as<double>();
     COV.PRIOR.DELTA = node["covariance"]["prior"]["delta"].as<double>();
     // c. process noise:
-    COV.PROCESS.GYRO = node["covariance"]["process"]["gyro"].as<double>();
-    COV.PROCESS.ACCEL = node["covariance"]["process"]["accel"].as<double>();
+    COV.PROCESS.GYRO_NOISE = node["covariance"]["process"]["gyro_noise"].as<double>();
+    COV.PROCESS.ACCEL_NOISE = node["covariance"]["process"]["accel_noise"].as<double>();
+    COV.PROCESS.GYRO_WALK = node["covariance"]["process"]["gyro_walk"].as<double>();
+    COV.PROCESS.ACCEL_WALK = node["covariance"]["process"]["accel_walk"].as<double>();
     // d. measurement noise:
     COV.MEASUREMENT.POSE.POSI = node["covariance"]["measurement"]["pose"]["pos"].as<double>();
     COV.MEASUREMENT.POSE.ORI = node["covariance"]["measurement"]["pose"]["ori"].as<double>();
@@ -101,8 +103,10 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const YAML::Node& node) {
               << "\tprior cov. epsilon.: " << COV.PRIOR.EPSILON  << std::endl
               << "\tprior cov. delta.: " << COV.PRIOR.DELTA << std::endl
               << std::endl
-              << "\tprocess noise gyro.: " << COV.PROCESS.GYRO << std::endl
-              << "\tprocess noise accel.: " << COV.PROCESS.ACCEL << std::endl
+              << "\tprocess noise accel.: " << COV.PROCESS.ACCEL_NOISE << std::endl
+              << "\tprocess noise gyro.: " << COV.PROCESS.GYRO_NOISE << std::endl
+              << "\tprocess random walk accel.: " << COV.PROCESS.ACCEL_WALK << std::endl
+              << "\tprocess random walk gyro.: " << COV.PROCESS.GYRO_WALK << std::endl
               << std::endl
               << "\tmeasurement noise pose.: " << std::endl 
               << "\t\tpos: " << COV.MEASUREMENT.POSE.POSI << ", ori.: " << COV.MEASUREMENT.POSE.ORI << std::endl
@@ -140,8 +144,10 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const YAML::Node& node) {
     ResetCovariance();
 
     // c. process noise:
-    Q_.block<3, 3>(0, 0) = COV.PROCESS.GYRO*Eigen::Matrix3d::Identity();
-    Q_.block<3, 3>(3, 3) = COV.PROCESS.ACCEL*Eigen::Matrix3d::Identity();
+    Q_.block<3, 3>(0, 0) = COV.PROCESS.GYRO_NOISE*Eigen::Matrix3d::Identity();
+    Q_.block<3, 3>(3, 3) = COV.PROCESS.ACCEL_NOISE*Eigen::Matrix3d::Identity();
+    Q_.block<3, 3>(6, 6) = COV.PROCESS.GYRO_WALK*Eigen::Matrix3d::Identity();
+    Q_.block<3, 3>(9, 9) = COV.PROCESS.ACCEL_WALK*Eigen::Matrix3d::Identity();
 
     // d. measurement noise:
     RPose_.block<3, 3>(0, 0) = COV.MEASUREMENT.POSE.POSI*Eigen::Matrix3d::Identity();

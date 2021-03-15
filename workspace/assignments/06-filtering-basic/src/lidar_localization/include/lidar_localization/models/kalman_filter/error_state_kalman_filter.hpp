@@ -95,7 +95,7 @@ public:
 private:
     // dimensions:
     static const int DIM_STATE = 15;
-    static const int DIM_PROCESS_NOISE = 6;
+    static const int DIM_PROCESS_NOISE = 12;
 
     static const int DIM_MEASUREMENT_POSE = 6;
     static const int DIM_MEASUREMENT_POSE_NOISE = 6;
@@ -110,8 +110,8 @@ private:
     static const int INDEX_ERROR_POS = 0;
     static const int INDEX_ERROR_VEL = 3;
     static const int INDEX_ERROR_ORI = 6;
-    static const int INDEX_ERROR_GYRO = 9;
-    static const int INDEX_ERROR_ACCEL = 12;
+    static const int INDEX_ERROR_ACCEL = 9;
+    static const int INDEX_ERROR_GYRO = 12;
     
     // state:
     typedef Eigen::Matrix<double,                      DIM_STATE,                              1> VectorX;
@@ -193,7 +193,7 @@ private:
      */
     bool GetAngularDelta(
         const size_t index_curr, const size_t index_prev,
-        Eigen::Vector3d &angular_delta
+        Eigen::Vector3d &angular_delta, Eigen::Vector3d &angular_vel_mid
     );
     /**
      * @brief  get velocity delta
@@ -234,7 +234,7 @@ private:
      * @param  linear_acc_mid, output mid-value unbiased linear acc
      * @return void
      */
-    void UpdateOdomEstimation(Eigen::Vector3d &linear_acc_mid);
+    void UpdateOdomEstimation(Eigen::Vector3d &linear_acc_mid, Eigen::Vector3d &angular_vel_mid);
 
     /**
      * @brief  set process equation
@@ -243,14 +243,14 @@ private:
      * @return void
      */
     void SetProcessEquation(
-        const Eigen::Matrix3d &C_nb, const Eigen::Vector3d &f_n
+        const Eigen::Matrix3d &C_nb, const Eigen::Vector3d &f_n,  const Eigen::Vector3d &w
     );
     /**
      * @brief  update process equation
      * @param  linear_acc_mid, input mid-value unbiased linear acc
      * @return void
      */
-    void UpdateProcessEquation(const Eigen::Vector3d &linear_acc_mid);
+    void UpdateProcessEquation(const Eigen::Vector3d &linear_acc_mid, const Eigen::Vector3d &linear_gyro_mid);
 
     /**
      * @brief  update error estimation
@@ -259,7 +259,8 @@ private:
      */
     void UpdateErrorEstimation(
         const double &T,
-        const Eigen::Vector3d &linear_acc_mid
+        const Eigen::Vector3d &linear_acc_mid,
+        const Eigen::Vector3d &angular_vel_mid
     );
 
     /**

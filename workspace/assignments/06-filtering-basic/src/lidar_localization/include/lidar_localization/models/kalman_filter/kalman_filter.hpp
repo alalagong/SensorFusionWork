@@ -210,8 +210,10 @@ protected:
             double DELTA;
         } PRIOR;
         struct {
-            double GYRO;
-            double ACCEL;
+            double GYRO_NOISE;
+            double ACCEL_NOISE;
+            double GYRO_WALK;
+            double ACCEL_WALK;
         } PROCESS;
         struct {
             struct {

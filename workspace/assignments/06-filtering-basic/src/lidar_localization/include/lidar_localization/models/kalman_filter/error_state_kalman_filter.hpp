@@ -385,6 +385,10 @@ private:
     VectorYPoseVel YPoseVel_;
     VectorYPosi YPosi_;
     VectorYPosiVel YPosiVel_;
+
+    // isclean delta bias
+    bool stable_gyro_delta_bias_ = true;
+    bool stable_accel_delta_bias_ = true;
 };
 
 } // namespace lidar_localization

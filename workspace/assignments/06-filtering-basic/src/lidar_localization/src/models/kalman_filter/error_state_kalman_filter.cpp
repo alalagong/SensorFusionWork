@@ -96,6 +96,9 @@ ErrorStateKalmanFilter::ErrorStateKalmanFilter(const YAML::Node& node) {
     // b. prior state & covariance:
     ResetState();
     ResetCovariance();
+
+    stable_gyro_delta_bias_ = false;
+    stable_accel_delta_bias_ = false;
     // c. process noise:
     Q_.block<3, 3>(0, 0) = COV.PROCESS.GYRO_NOISE*Eigen::Matrix3d::Identity();
     Q_.block<3, 3>(3, 3) = COV.PROCESS.ACCEL_NOISE*Eigen::Matrix3d::Identity();
@@ -628,7 +631,7 @@ void ErrorStateKalmanFilter::UpdateErrorEstimation(
     // TODO: perform Kalman prediction
     //
     X_ = F*X_; // fix this
-    LOG(INFO) << "state delta x : " << X_;
+    // LOG(INFO) << "state delta x : " << X_;
     P_ = F*P_*F.transpose() + B*Q_*B.transpose(); // fix this
 }
 
@@ -718,11 +721,13 @@ void ErrorStateKalmanFilter::EliminateError(void) {
 
     // d. gyro bias:
     if ( IsCovStable(INDEX_ERROR_GYRO) ) {
+        stable_gyro_delta_bias_ = true;
         gyro_bias_ -= X_.block<3, 1>(INDEX_ERROR_GYRO, 0);
     }
     
     // e. accel bias:
     if ( IsCovStable(INDEX_ERROR_ACCEL) ) {
+        stable_accel_delta_bias_ = true;
         accl_bias_ -= X_.block<3, 1>(INDEX_ERROR_ACCEL, 0);
     }
 }
@@ -753,7 +758,13 @@ bool ErrorStateKalmanFilter::IsCovStable(
  */
 void ErrorStateKalmanFilter::ResetState(void) {
     // reset current state:
-    X_ = VectorX::Zero();
+    X_.head(INDEX_ERROR_ACCEL)= VectorX::Zero().head(INDEX_ERROR_ACCEL);
+
+    if(stable_gyro_delta_bias_)
+        X_.segment(INDEX_ERROR_GYRO, 3) = Eigen::Vector3d::Zero();
+
+    if(stable_accel_delta_bias_)
+        X_.segment<3>(INDEX_ERROR_ACCEL, 3) = Eigen::Vector3d::Zero();    
 }
 
 /**

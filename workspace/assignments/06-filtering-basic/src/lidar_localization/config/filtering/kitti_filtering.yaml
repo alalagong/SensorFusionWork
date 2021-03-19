@@ -124,8 +124,8 @@ error_state_kalman_filter:
         process:
             gyro_noise: 1.0e-4
             accel_noise: 2.5e-3
-            gyro_walk: 1.0e-5
-            accel_walk: 2.5e-3 
+            gyro_walk: 0
+            accel_walk: 0
         measurement:
             pose:
                 pos: 1.0e-4

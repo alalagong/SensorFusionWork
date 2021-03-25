@@ -183,7 +183,13 @@ private:
         const Eigen::Vector3d &linear_acc,
         const Eigen::Matrix3d &R
     );
-
+    bool IsTurning(const Eigen::Vector3d &w_b);
+    /**
+     * @brief  apply motion constraint on velocity estimation
+     * @param  void
+     * @return void
+     */
+    void ApplyMotionConstraint(void);
     /**
      * @brief  get angular delta
      * @param  index_curr, current imu measurement buffer index
@@ -270,6 +276,38 @@ private:
      */
     void CorrectErrorEstimationPose(
         const Eigen::Matrix4d &T_nb,
+        Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+    );
+
+    /**
+     * @brief  correct error estimation using pose and body velocity measurement
+     * @param  T_nb, input pose measurement
+     * @param  v_b, input velocity measurement
+     * @return void
+     */
+    void CorrectErrorEstimationPoseVel(
+        const Eigen::Matrix4d &T_nb, const Eigen::Vector3d &v_b, const Eigen::Vector3d &w_b,
+        Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+    );
+
+    /**
+     * @brief  correct error estimation using position measurement
+     * @param  T_nb, input position measurement
+     * @return void
+     */
+    void CorrectErrorEstimationPosi(
+        const Eigen::Matrix4d &T_nb,
+        Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+    );
+
+    /**
+     * @brief  correct error estimation using navigation position and body velocity measurement
+     * @param  T_nb, input position measurement
+     * @param  v_b, input velocity measurement
+     * @return void
+     */
+    void CorrectErrorEstimationPosiVel(
+        const Eigen::Matrix4d &T_nb, const Eigen::Vector3d &v_b, const Eigen::Vector3d &w_b,
         Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
     );
 
@@ -383,8 +421,10 @@ private:
     // measurement:
     VectorYPose YPose_;
     VectorYPoseVel YPoseVel_;
+    VectorYPoseVelCons YPoseVelCons_;
     VectorYPosi YPosi_;
     VectorYPosiVel YPosiVel_;
+    VectorYPosiVelCons YPosiVelCons_;
 
     // isclean delta bias
     bool stable_gyro_delta_bias_ = true;

@@ -92,10 +92,13 @@ bool GNSSINSSimFilteringFlow::SaveOdometry(void) {
     std::ofstream fused_odom_ofs;
     std::ofstream gnss_odom_ofs;
     std::ofstream ref_odom_ofs;
+    std::ofstream vel_ofs;
+
     if (
         !FileManager::CreateFile(fused_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/fused.txt") ||
         !FileManager::CreateFile(gnss_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/gnss.txt") ||
-        !FileManager::CreateFile(ref_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/ground_truth.txt")
+        !FileManager::CreateFile(ref_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/ground_truth.txt") ||
+        !FileManager::CreateFile(vel_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/vel.txt")
     ) {
         return false;
     }
@@ -114,10 +117,12 @@ bool GNSSINSSimFilteringFlow::SaveOdometry(void) {
             break;
         }
         current_ref_pose_data_ = ref_pose_data_buff_.front();
+        Eigen::Vector3f ref_v_b =  current_ref_pose_data_.pose.block<3,3>(0,0).transpose()*current_ref_pose_data_.vel;
 
         SavePose(trajectory.fused_.at(i), fused_odom_ofs);
         SavePose(trajectory.gnss_.at(i), gnss_odom_ofs);
         SavePose(current_ref_pose_data_.pose, ref_odom_ofs);
+        SaveVel(trajectory.vel_.at(i), ref_v_b, vel_ofs);
     }
 
     return true;
@@ -271,6 +276,8 @@ bool GNSSINSSimFilteringFlow::UpdateOdometry(const double &time) {
 
     trajectory.gnss_.push_back(gnss_pose_);
 
+    Eigen::Vector3f vel_b = fused_pose_.block<3, 3>(0, 0).transpose()*fused_vel_;
+    trajectory.vel_.push_back(vel_b);
     ++trajectory.N;
 
     return true;
@@ -300,5 +307,26 @@ bool GNSSINSSimFilteringFlow::SavePose(
 
     return true;
 }
+
+bool GNSSINSSimFilteringFlow::SaveVel(
+    const Eigen::Vector3f& vel, 
+    const Eigen::Vector3f& ref_vel, 
+    std::ofstream& ofs
+    ) {
+        for(int i = 0; i < 3; ++i) {
+            ofs << vel(i);
+            ofs << " ";
+        }
+
+        for(int i = 0; i < 3; ++i) {
+            ofs << ref_vel(i);
+
+            if(i == 2)
+                ofs << std::endl;
+            else 
+                ofs << " ";
+        }
+        return true;
+    }
 
 }

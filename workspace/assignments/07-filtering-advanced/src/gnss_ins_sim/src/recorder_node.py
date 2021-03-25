@@ -419,7 +419,9 @@ def get_gnss_ins_sim(
     motion_def_file, 
     fs_imu, fs_gps,
     imu_error_level = 'high_accuracy',
-    mag_error_level = 'mid_accuracy', gps_error_level = 'mid_accuracy', odo_error_level = 'mid_accuracy'
+    mag_error_level = 'mid_accuracy', 
+    gps_error_level = 'mid_accuracy', 
+    odo_error_level = 'mid_accuracy'
 ):
     """
     Generate simulated 

@@ -145,7 +145,7 @@ bool KITTIFiltering::Correct(
     if (
         kalman_filter_ptr_->Correct(
             imu_data,
-            KalmanFilter::MeasurementType::POSE, current_measurement_
+            KalmanFilter::MeasurementType::POSI, current_measurement_
         )
     ) {
         kalman_filter_ptr_->GetOdometry(

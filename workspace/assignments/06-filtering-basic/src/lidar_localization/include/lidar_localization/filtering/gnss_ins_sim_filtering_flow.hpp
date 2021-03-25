@@ -77,7 +77,11 @@ class GNSSINSSimFilteringFlow {
         const Eigen::Matrix4f& pose, 
         std::ofstream& ofs
     );
-
+    bool SaveVel(
+        const Eigen::Vector3f& vel, 
+        const Eigen::Vector3f& ref_vel, 
+        std::ofstream& ofs
+    );
   private:
     // subscriber:
     // a. IMU:
@@ -118,6 +122,7 @@ class GNSSINSSimFilteringFlow {
       std::deque<Eigen::Matrix4f> fused_;
       std::deque<Eigen::Matrix4f> gnss_;
       std::deque<Eigen::Matrix4f> ref_;
+      std::deque<Eigen::Vector3f> vel_; 
     } trajectory;
 };
 

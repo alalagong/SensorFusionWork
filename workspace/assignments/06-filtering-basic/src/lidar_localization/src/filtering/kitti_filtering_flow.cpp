@@ -107,10 +107,12 @@ bool KITTIFilteringFlow::SaveOdometry(void) {
     std::ofstream fused_odom_ofs;
     std::ofstream laser_odom_ofs;
     std::ofstream ref_odom_ofs;
+    std::ofstream vel_n_ofs;
     if (
         !FileManager::CreateFile(fused_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/fused.txt") ||
         !FileManager::CreateFile(laser_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/laser.txt") ||
-        !FileManager::CreateFile(ref_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/ground_truth.txt")
+        !FileManager::CreateFile(ref_odom_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/ground_truth.txt") ||
+        !FileManager::CreateFile(vel_n_ofs, WORK_SPACE_PATH + "/slam_data/trajectory/vel.txt")
     ) {
         return false;
     }
@@ -141,6 +143,7 @@ bool KITTIFilteringFlow::SaveOdometry(void) {
         SavePose(trajectory.fused_.at(i), fused_odom_ofs);
         SavePose(trajectory.lidar_.at(i), laser_odom_ofs);
         SavePose(current_gnss_data_.pose, ref_odom_ofs);
+        SaveVel(trajectory.vel_.at(i), vel_n_ofs);
     }
 
     return true;
@@ -336,6 +339,10 @@ bool KITTIFilteringFlow::UpdateOdometry(const double &time) {
     trajectory.fused_.push_back(fused_pose_);
     trajectory.lidar_.push_back(laser_pose_);
 
+    // vel in body
+    Eigen::Vector3f vel_b = fused_pose_.block<3, 3>(0, 0).transpose()*fused_vel_;
+    trajectory.vel_.push_back(vel_b);
+    
     ++trajectory.N;
 
     return true;
@@ -366,4 +373,18 @@ bool KITTIFilteringFlow::SavePose(
     return true;
 }
 
+bool KITTIFilteringFlow::SaveVel(
+        const Eigen::Vector3f& vel, 
+        std::ofstream& ofs
+    ) {
+        for(int i = 0; i < 3; ++i) {
+            ofs << vel(i);
+            
+            if(i == 2)
+                ofs << std::endl;
+            else 
+                ofs << " ";
+        }
+        return true;
+    }
 }

@@ -139,10 +139,10 @@ ErrorStateKalmanFilter::ErrorStateKalmanFilter(const YAML::Node& node) {
     CPoseVel_.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
     CPoseVel_.block<3, 3>(6, 6) = Eigen::Matrix3d::Identity();
 
-    GPoseVelCons_.block<7, DIM_STATE>(0, 0) = GPoseVel_.block<7, DIM_STATE>(0, 0);
-    GPoseVelCons_.block<1, DIM_STATE>(7, 0) = GPoseVel_.block<1, DIM_STATE>(8, 0);
-    CPoseVelCons_.block<7, 7>(0, 0) = Eigen::Matrix<double, 7, 7>::Identity();
-    CPoseVelCons_(7, 8) = 1.0;
+    GPoseVelCons_.block<6, DIM_STATE>(0, 0) = GPoseVel_.block<6, DIM_STATE>(0, 0);
+    GPoseVelCons_.block<2, DIM_STATE>(6, 0) = GPoseVel_.block<2, DIM_STATE>(7, 0);
+    CPoseVelCons_.block<6, 6>(0, 0) = Eigen::Matrix<double, 6, 6>::Identity();
+    CPoseVelCons_(6, 7) = CPoseVelCons_(7, 8) =1.0;
 
     GPosi_.block<3, 3>(0, INDEX_ERROR_POS) = Eigen::Matrix3d::Identity();
     CPosi_.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
@@ -151,10 +151,10 @@ ErrorStateKalmanFilter::ErrorStateKalmanFilter(const YAML::Node& node) {
     CPosiVel_.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
     CPosiVel_.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
 
-    GPosiVelCons_.block<4, DIM_STATE>(0, 0) = GPosiVel_.block<4, DIM_STATE>(0, 0);
-    GPosiVelCons_.block<1, DIM_STATE>(4, 0) = GPosiVel_.block<1, DIM_STATE>(5, 0);
-    CPosiVelCons_.block<4, 4>(0, 0) = Eigen::Matrix4d::Identity();
-    CPosiVelCons_(4, 5) = 1.0;
+    GPosiVelCons_.block<3, DIM_STATE>(0, 0) = GPosiVel_.block<3, DIM_STATE>(0, 0);
+    GPosiVelCons_.block<2, DIM_STATE>(3, 0) = GPosiVel_.block<2, DIM_STATE>(4, 0);
+    CPosiVelCons_.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+    CPosiVelCons_(4, 5) = CPosiVelCons_(3, 4) = 1.0;
 
     // init soms:
     QPose_.block<DIM_MEASUREMENT_POSE, DIM_STATE>(0, 0) = GPose_;
@@ -285,6 +285,9 @@ bool ErrorStateKalmanFilter::Correct(
         // reset error state:
         ResetState();
 
+        // apply motion constraint:
+        if ( !IsTurning(measurement_.w_b) && MOTION_CONSTRAINT.ACTIVATED ) ApplyMotionConstraint();
+
         return true;
     }
 
@@ -371,8 +374,8 @@ inline Eigen::Vector3d ErrorStateKalmanFilter::GetUnbiasedAngularVel(
     const Eigen::Vector3d &angular_vel,
     const Eigen::Matrix3d &R
 ) {
-    // return angular_vel - gyro_bias_ - R.transpose() * w_;
-    return angular_vel - R.transpose() * w_;
+    return angular_vel - gyro_bias_ - R.transpose() * w_;
+    // return angular_vel - R.transpose() * w_;
 }
 
 /**
@@ -385,8 +388,35 @@ inline Eigen::Vector3d ErrorStateKalmanFilter::GetUnbiasedLinearAcc(
     const Eigen::Vector3d &linear_acc,
     const Eigen::Matrix3d &R
 ) {
-    // return R*(linear_acc - accl_bias_) - g_;
-    return R*(linear_acc) - g_;
+    return R*(linear_acc - accl_bias_) - g_;
+    // return R*(linear_acc) - g_;
+}
+
+/**
+ * @brief  apply motion constraint on velocity estimation
+ * @param  void
+ * @return void
+ */
+void ErrorStateKalmanFilter::ApplyMotionConstraint(void) {
+    const Eigen::Matrix3d C_nb = pose_.block<3, 3>(0, 0);
+
+    Eigen::Vector3d v_b = C_nb.transpose() * vel_;
+    v_b.y() = v_b.z() = 0.0;
+    vel_ = C_nb * v_b;
+}
+
+/**
+ * @brief  whether the ego vehicle is turning
+ * @param  void
+ * @return void
+ */
+bool ErrorStateKalmanFilter::IsTurning(const Eigen::Vector3d &w_b) {
+    Eigen::Vector3d w_b_unbiased = GetUnbiasedAngularVel(
+        w_b, pose_.block<3, 3>(0, 0)
+    );
+
+    // TODO: move this to config 
+    return w_b_unbiased.norm() > MOTION_CONSTRAINT.W_B_THRESH;
 }
 
 /**
@@ -561,6 +591,10 @@ void ErrorStateKalmanFilter::UpdateOdomEstimation(Eigen::Vector3d &linear_acc_mi
 
     // update position:
     UpdatePosition(T, velocity_delta);
+
+    // apply motion constraint:
+    w_b = 1.0 / T * angular_delta;
+    if ( !IsTurning(w_b) && MOTION_CONSTRAINT.ACTIVATED ) ApplyMotionConstraint();
 }
 
 /**
@@ -644,9 +678,7 @@ void ErrorStateKalmanFilter::CorrectErrorEstimationPose(
     const Eigen::Matrix4d &T_nb,
     Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
 ) {
-    //
-    // TODO: set measurement:
-    // 
+    // set measurement:
     Eigen::Vector3d P_nn_obs = pose_.block<3,1>(0, 3) - T_nb.block<3,1>(0,3);     // fix this
     Eigen::Matrix3d C_nn_obs = T_nb.block<3,3>(0, 0).transpose()*pose_.block<3,3>(0, 0); // fix this
 
@@ -658,13 +690,139 @@ void ErrorStateKalmanFilter::CorrectErrorEstimationPose(
     // set measurement equation:
     G = GPose_;
 
-    //
-    // TODO: set Kalman gain:
-    // 
+    // set Kalman gain:
     MatrixRPose R = RPose_; // fix this
     MatrixCPose C = CPose_;
     K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); // fix this
 }
+
+/**
+ * @brief  correct error estimation using pose and body velocity measurement
+ * @param  T_nb, input pose measurement
+ * @param  v_b, input velocity measurement
+ * @return void
+ */
+void ErrorStateKalmanFilter::CorrectErrorEstimationPoseVel(
+    const Eigen::Matrix4d &T_nb, const Eigen::Vector3d &v_b, const Eigen::Vector3d &w_b,
+    Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+) {
+    // set measurement:
+    Eigen::Vector3d P_nn_obs = pose_.block<3,1>(0, 3) - T_nb.block<3,1>(0,3);     
+    Eigen::Matrix3d C_nn_obs = T_nb.block<3,3>(0, 0).transpose()*pose_.block<3,3>(0, 0); 
+    Eigen::Matrix3d C_bw = pose_.block<3,3>(0, 0).transpose();
+    Eigen::Vector3d v_bb_obs = C_bw*vel_ - v_b;
+    Eigen::Matrix3d V_bb_x = Sophus::SO3d::hat(C_bw*vel_);
+    
+    if ( !IsTurning(w_b) && MOTION_CONSTRAINT.ACTIVATED ) {
+        YPoseVelCons_.block<3, 1>(0, 0) = P_nn_obs;
+        YPoseVelCons_.block<3, 1>(3, 0) = Sophus::SO3d::vee(C_nn_obs - Eigen::Matrix3d::Identity());
+        v_bb_obs = C_bw*vel_ - Eigen::Vector3d(0,0,0);
+        YPoseVelCons_.block<2, 1>(6, 0) = v_bb_obs.tail(2);
+
+        Y = YPoseVelCons_;
+
+        // set measurement equation:
+        GPoseVelCons_.block<2, 3>(6, INDEX_ERROR_VEL) = C_bw.block<2, 3>(1, 0);
+        GPoseVelCons_.block<2, 3>(6, INDEX_ERROR_ORI) = V_bb_x.block<2, 3>(1, 0);
+        G = GPoseVelCons_;
+
+        // set Kalman gain:
+        MatrixRPoseVel R = RPoseVel_; 
+        MatrixCPoseVelCons C = CPoseVelCons_;
+        K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); 
+    } else {
+        YPoseVel_.block<3, 1>(0, 0) = P_nn_obs;
+        YPoseVel_.block<3, 1>(3, 0) = Sophus::SO3d::vee(C_nn_obs - Eigen::Matrix3d::Identity());
+        YPoseVel_.block<3, 1>(6, 0) = v_bb_obs;
+
+        Y = YPoseVel_;
+
+        // set measurement equation:
+        GPoseVel_.block<3, 3>(6, INDEX_ERROR_VEL) = C_bw;
+        GPoseVel_.block<3, 3>(6, INDEX_ERROR_ORI) = V_bb_x;
+        G = GPoseVel_;
+
+        // set Kalman gain:
+        MatrixRPoseVel R = RPoseVel_; 
+        MatrixCPoseVel C = CPoseVel_;
+        K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); 
+    }
+}
+
+
+/**
+ * @brief  correct error estimation using position measurement
+ * @param  T_nb, input position measurement
+ * @return void
+ */
+void ErrorStateKalmanFilter::CorrectErrorEstimationPosi(
+    const Eigen::Matrix4d &T_nb,
+    Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+) {
+    // set measurement:
+    Eigen::Vector3d P_nn_obs = pose_.block<3,1>(0, 3) - T_nb.block<3,1>(0,3);     
+
+    YPosi_.block<3, 1>(0, 0) = P_nn_obs;
+
+    Y = YPosi_;
+
+    // set measurement equation:
+    G = GPosi_;
+    
+    // set Kalman gain:
+    MatrixCPosi R = RPosi_; 
+    MatrixCPosi C = CPosi_;
+    K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); 
+}
+
+
+/**
+ * @brief  correct error estimation using navigation position and body velocity measurement
+ * @param  T_nb, input position measurement
+ * @param  v_b, input velocity measurement
+ * @return void
+ */
+void ErrorStateKalmanFilter::CorrectErrorEstimationPosiVel(
+    const Eigen::Matrix4d &T_nb, const Eigen::Vector3d &v_b, const Eigen::Vector3d &w_b,
+    Eigen::VectorXd &Y, Eigen::MatrixXd &G, Eigen::MatrixXd &K
+) {
+    // set measurement:
+    Eigen::Vector3d P_nn_obs = pose_.block<3,1>(0, 3) - T_nb.block<3,1>(0,3);     
+    Eigen::Matrix3d C_bw = pose_.block<3,3>(0, 0).transpose();
+    Eigen::Vector3d v_bb_obs = C_bw*vel_ - v_b;
+    Eigen::Matrix3d V_bb_x = Sophus::SO3d::hat(C_bw*vel_);
+    
+    if ( !IsTurning(w_b) && MOTION_CONSTRAINT.ACTIVATED ) {
+        YPosiVelCons_.block<3, 1>(0, 0) = P_nn_obs;
+        YPosiVelCons_.block<2, 1>(3, 0) = v_bb_obs.tail(2);
+
+        Y = YPosiVelCons_;
+        
+        GPosiVelCons_.block<2, 3>(3, INDEX_ERROR_VEL) = C_bw.block<2, 3>(1, 0);
+        GPosiVelCons_.block<2, 3>(3, INDEX_ERROR_ORI) = V_bb_x.block<2, 3>(1, 0);
+        
+        G = GPosiVelCons_;
+
+        MatrixRPosiVel R = RPosiVel_; 
+        MatrixCPosiVelCons C = CPosiVelCons_;
+        K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); 
+    } else {
+        YPosiVel_.block<3, 1>(0, 0) = P_nn_obs;
+        YPosiVel_.block<3, 1>(3, 0) = v_bb_obs;
+
+        Y = YPosiVel_;
+
+        GPosiVel_.block<3, 3>(3, INDEX_ERROR_VEL) = C_bw;
+        GPosiVel_.block<3, 3>(3, INDEX_ERROR_ORI) = V_bb_x;
+
+        G = GPosiVel_;
+
+        MatrixRPosiVel R = RPosiVel_; 
+        MatrixCPosiVel C = CPosiVel_;
+        K = P_*G.transpose()*(G*P_*G.transpose()+C*R*C.transpose()).inverse(); 
+    }
+}
+
 
 /**
  * @brief  correct error estimation
@@ -689,15 +847,27 @@ void ErrorStateKalmanFilter::CorrectErrorEstimation(
             );
             break;
         case MeasurementType::POSE_VEL:
-            // TODO
+            CorrectErrorEstimationPoseVel(
+                measurement.T_nb, measurement.v_b, measurement.w_b,
+                Y, G, K
+            );
             break;
+        case MeasurementType::POSI:
+            CorrectErrorEstimationPosi(
+                measurement.T_nb,
+                Y, G, K
+            );
+            break;
+        case MeasurementType::POSI_VEL:
+            CorrectErrorEstimationPosiVel(
+                measurement.T_nb, measurement.v_b, measurement.w_b,
+                Y, G, K
+            );
         default:
             break;
     }
 
-    //
-    // TODO: perform Kalman correct:
-    // 
+    // perform Kalman correct:
     P_ = (MatrixP::Identity() - K*G)*P_; // fix this
     X_ = X_+K*(Y-G*X_); // fix this
 }

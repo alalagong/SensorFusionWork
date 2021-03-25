@@ -85,6 +85,10 @@ class KITTIFilteringFlow {
         std::ofstream& ofs
     );
 
+    bool SaveVel(
+        const Eigen::Vector3f& vel, 
+        std::ofstream& ofs
+    );
   private:
     // subscriber:
     // a. IMU raw:
@@ -142,6 +146,7 @@ class KITTIFilteringFlow {
       std::deque<Eigen::Matrix4f> fused_;
       std::deque<Eigen::Matrix4f> lidar_;
       std::deque<Eigen::Matrix4f> ref_;
+      std::deque<Eigen::Vector3f> vel_;
     } trajectory;
 };
 

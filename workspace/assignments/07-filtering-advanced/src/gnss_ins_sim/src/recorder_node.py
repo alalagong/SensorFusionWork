@@ -404,7 +404,7 @@ def get_pose_msg(stamp, ref_pos, ref_vel, ref_att_quat):
         pose_msg.pose.pose.orientation.z
     ) = ref_att_quat
 
-    # c. body frame, velocity:
+    # c. world frame, velocity:
     (
         pose_msg.twist.twist.linear.x, 
         pose_msg.twist.twist.linear.y, 
